@@ -32,22 +32,6 @@ class InfdotUploadController < ActionController::Base
   def upload
     setup_essential_data params
     
-    if @errors.empty?
-      versions = @project.versions.select { |v| v.open? and version_is_current_build v }
-        
-      if versions.empty?
-        @errors << "The project has no open version."
-      end
-      
-      if versions.size > 1
-        @errors << "The project must have single version marked for build."
-      end
-    end
-
-    if @errors.empty?
-      version = versions.first
-    end
-    
     if params[:file].nil?
       @errors << "The file to store is not sent."
     end
@@ -57,7 +41,7 @@ class InfdotUploadController < ActionController::Base
       original_name = params[:file].original_filename
       original_name = original_name.gsub(/^.*(\\|\/)/, '')
       original_name = original_name.gsub(/[^\w\.\-]/,'_')
-      version.attachments.each do |a|
+      @version.attachments.each do |a|
         if a.filename == original_name
           @errors << "The file already exists."
         end
@@ -68,7 +52,7 @@ class InfdotUploadController < ActionController::Base
       begin
         # There was a comment that Attachment#create might be moved into the model.
         a = Attachment.create(
-          :container => version,
+          :container => @version,
           :file => params[:file],
           :description => "", # Description is not shown under Files anyway.
           :author => @user)
@@ -98,26 +82,37 @@ class InfdotUploadController < ActionController::Base
   
   def setup_essential_data params
     @errors = []
-    
-    if params[:user].nil?
-      @errors << "User name is not specified."
+   
+    if params[:api_key].nil? and params[:user].nil? 
+      @errors << "Neither API key nor user name specified."
     end
     
-    if params[:password].nil?
+    if !params[:user].nil? and params[:password].nil?
       @errors << "User password is not specified."
     end
     
     if params[:project].nil?
       @errors << "Project identifier is not specified."
     end
+
+    if params[:version_id].nil?
+      @errors << "Version identifier is not specified."
+    end
     
     if @errors.empty?
-      @user = User.find_by_login params[:user]
-      if @user.nil?
-        @errors << "User name is invalid."
+      unless params[:api_key].nil?
+        @user = User.find_by_api_key params[:api_key]
+        if @user.nil?
+          @errors << "API key is invalid."
+        end
       else
-        if !@user.check_password? params[:password]
-          @errors << "Incorrect username/password."
+        @user = User.find_by_login params[:user]
+        if @user.nil?
+          @errors << "User name is invalid."
+        else
+          if !@user.check_password? params[:password]
+            @errors << "Incorrect username/password."
+          end
         end
       end
     end
@@ -126,6 +121,17 @@ class InfdotUploadController < ActionController::Base
       @project = Project.find_by_identifier params[:project]
       if @project.nil?
         @errors << "Project name is invalid."
+      end
+    end
+
+    if @errors.empty?
+      @project.versions.each do |version|
+        if version.id = params[:version_id]
+          @version = version
+        end
+      end
+      if @version.nil?
+        @errors << "Version ID is invalid or does not belong to project specified."
       end
     end
     
@@ -145,18 +151,6 @@ class InfdotUploadController < ActionController::Base
     roles.each do |r|
       can_upload ||= r.permissions.include? :manage_files
     end
-  end
-  
-  def version_is_current_build version
-    version.custom_values.each do |c|
-      if c.custom_field.name == "Current build"
-        if c.value == "1"
-          return true
-        end
-      end
-    end
-    
-    return false
   end
   
 end

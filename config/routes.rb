@@ -16,6 +16,12 @@
 #  You should have received a copy of the GNU General Public License
 #  along with infdot-build.  If not, see <http://www.gnu.org/licenses/>.
 
-RedmineApp::Application.routes.draw do
-  post '/infdot_upload', :controller => 'infdot_upload', :action => 'upload'
+if Rails::VERSION::MAJOR >= 3
+  RedmineApp::Application.routes.draw do
+    post '/infdot_upload', :controller => 'infdot_upload', :action => 'upload'
+  end
+else
+  ActionController::Routing::Routes.draw do |map|
+    map.connect '/infdot_upload', :controller => 'infdot_upload', :action => 'upload', :via => 'post'
+  end
 end
